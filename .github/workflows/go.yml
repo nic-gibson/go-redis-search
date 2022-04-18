@@ -17,7 +17,6 @@ on:
 env:
   GO_VERSION: '1.18'
 
-
 jobs:
   pre_flight:
     runs-on: ubuntu-latest
