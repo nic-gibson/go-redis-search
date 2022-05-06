@@ -1,4 +1,4 @@
-module github.com/fluffy-bunny/go-redis-search
+module github.com/nic-gibson/go-redis-search
 
 go 1.18
 
