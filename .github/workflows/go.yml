@@ -20,7 +20,8 @@ env:
 jobs:
   pre_flight:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write    
     outputs:
       new_tag: ${{ steps.tag_version.outputs.new_tag }}
       changelog : ${{ steps.tag_version.outputs.changelog }}
@@ -55,7 +56,8 @@ jobs:
   release:
     needs: [pre_flight,build]
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write  
     steps:
     - run: |
         echo new_tag: ${{needs.pre_flight.outputs.new_tag}} 
