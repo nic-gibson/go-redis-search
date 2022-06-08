@@ -20,7 +20,8 @@ env:
 jobs:
   pre_flight:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: write    
     outputs:
       new_tag: ${{ steps.tag_version.outputs.new_tag }}
       changelog : ${{ steps.tag_version.outputs.changelog }}
@@ -39,45 +40,13 @@ jobs:
       run: |
        echo new_tag: ${{needs.pre_flight.outputs.new_tag}} 
        echo changelog: ${{needs.pre_flight.outputs.changelog}}
-
     - uses: actions/checkout@v3
 
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
         go-version: "^${{ env.GO_VERSION }}"
-
-    - name: go mod vendor
-      run: |
-        go mod tidy -compat="${{ env.GO_VERSION }}" 
-        go mod download
-        go mod vendor
-
-    - name: move vendor sub folders
-      run: |
-        mv ./vendor/github.com/fluffy-bunny/sarulabsdi/genny/ ./genny/sarulabsdi/
-        rm -rf ./vendor/
-
-    - name: Install Mockgen
-      run: |
-        go install github.com/golang/mock/mockgen@latest
-    - name: Install genny
-      run: |
-        go version
-        go install github.com/cheekybits/genny@latest
-    
-    - name: GO GENERATE
-      run: |
-        go generate -x ./...
-        rm -rf ./genny/sarulabsdi/
-        go mod tidy -compat="${{ env.GO_VERSION }}" 
-
-    # NOTE: This will NOT trigger another run of CI.yml
-    - name: AutoCommit
-      uses: stefanzweifel/git-auto-commit-action@v4.13.1
-      with:
-        commit_message: Apply genny and mockgen changes
-
+   
     - name: Build
       run: go build -v ./...
 
@@ -87,7 +56,8 @@ jobs:
   release:
     needs: [pre_flight,build]
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write  
     steps:
     - run: |
         echo new_tag: ${{needs.pre_flight.outputs.new_tag}} 
@@ -101,4 +71,3 @@ jobs:
           tag_name: ${{needs.pre_flight.outputs.new_tag}}
           release_name: Release ${{needs.pre_flight.outputs.new_tag}} 
           body:  ${{needs.pre_flight.outputs.changelog}}
-    
