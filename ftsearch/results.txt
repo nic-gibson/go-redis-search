@@ -1,0 +1,39 @@
+
+	cmd := redis.NewSliceCmd(ctx, serialized...)
+	if err := c.client.Process(ctx, cmd); err != nil {
+		return nil, err
+	} else if rawResults, err := cmd.Result(); err != nil {
+		return nil, err
+	} else {
+		resultSize := qry.resultSize()
+		resultCount := (len(rawResults) - 1) / resultSize
+		results := QueryResults{
+			Count: rawResults[0].(int64),
+			Data:  make(map[string]QueryResult, resultCount),
+		}
+
+		for i := 1; i < len(rawResults); i += resultSize {
+			j := 0
+			var score float64 = 0
+
+			key := rawResults[i+j].(string)
+			j++
+
+			if qry.WithScores {
+				score, _ = strconv.ParseFloat(rawResults[i+j].(string), 64)
+				j++
+			}
+
+			result := QueryResult{
+				Score: score,
+			}
+
+			if !qry.NoContent {
+				result.Value = toMap(rawResults[i+j].([]interface{}))
+				j++
+			}
+
+			results.Data[key] = result
+
+		}
+		return &results, nil

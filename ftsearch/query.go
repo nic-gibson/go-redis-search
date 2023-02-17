@@ -5,16 +5,12 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
-
-	"github.com/go-redis/redis/v8"
 )
 
 type countedArgs []string
 
-type query struct {
+type QueryOptions struct {
 	Index        string
-	QueryString  string
 	NoContent    bool
 	Verbatim     bool
 	NoStopWords  bool
@@ -52,48 +48,11 @@ type QueryResults struct {
 	Data  map[string]QueryResult
 }
 
-func (c *Client) Search(ctx context.Context, qry *query) (*QueryResults, error) {
-
+func (c *Client) FTSearch(ctx context.Context, index string, query string, qry *QueryOptions) *QueryCmd {
 	serialized := qry.serialize()
-	cmd := redis.NewSliceCmd(ctx, serialized...)
-	if err := c.client.Process(ctx, cmd); err != nil {
-		return nil, err
-	} else if rawResults, err := cmd.Result(); err != nil {
-		return nil, err
-	} else {
-		resultSize := qry.resultSize()
-		resultCount := (len(rawResults) - 1) / resultSize
-		results := QueryResults{
-			Count: rawResults[0].(int64),
-			Data:  make(map[string]QueryResult, resultCount),
-		}
-
-		for i := 1; i < len(rawResults); i += resultSize {
-			j := 0
-			var score float64 = 0
-
-			key := rawResults[i+j].(string)
-			j++
-
-			if qry.WithScores {
-				score, _ = strconv.ParseFloat(rawResults[i+j].(string), 64)
-				j++
-			}
-
-			result := QueryResult{
-				Score: score,
-			}
-
-			if !qry.NoContent {
-				result.Value = toMap(rawResults[i+j].([]interface{}))
-				j++
-			}
-
-			results.Data[key] = result
-
-		}
-		return &results, nil
-	}
+	args := []interface{}{"ft.search", index, query}
+	args = append(args, serialized...)
+	return NewQueryCmd(ctx, args...)
 }
 
 /******************************************************************************
@@ -101,8 +60,8 @@ func (c *Client) Search(ctx context.Context, qry *query) (*QueryResults, error) 
 ******************************************************************************/
 
 // NewQuery creates a new query with defaults set
-func NewQuery() *query {
-	return &query{
+func NewQuery() *QueryOptions {
+	return &QueryOptions{
 		Limit: DefaultQueryLimit(),
 		Slop:  noSlop,
 	}
@@ -110,103 +69,96 @@ func NewQuery() *query {
 
 // String returns the serialized query as a single string. Any quoting
 // required to use it in redis-cli is not done.
-func (q *query) String() string {
+func (q *QueryOptions) String() string {
 	return fmt.Sprintf("%v", q.serialize())
-}
-
-// WithQueryString sets the raw query string on a Query, returning
-// the updated query for chaining.
-func (q *query) WithQueryString(queryString string) *query {
-	q.QueryString = queryString
-	return q
 }
 
 // WithIndex sets the index to be search on a query, returning the
 // udpated query for chaining
-func (q *query) WithIndex(index string) *query {
+func (q *QueryOptions) WithIndex(index string) *QueryOptions {
 	q.Index = index
 	return q
 }
 
 // WithLimit adds a limit to a query, returning the Query with
 // the limit added (to allow chaining)
-func (q *query) WithLimit(first int64, num int64) *query {
+func (q *QueryOptions) WithLimit(first int64, num int64) *QueryOptions {
 	q.Limit = NewQueryLimit(first, num)
 	return q
 }
 
 // WithReturnFields sets the return fields, replacing any which
 // might currently be set, returning the updated qry.
-func (q *query) WithReturnFields(fields []string) *query {
+func (q *QueryOptions) WithReturnFields(fields []string) *QueryOptions {
 	q.ReturnFields = fields
 	return q
 }
 
 // AddReturnField appends a single field to the return fields,
 // returning the updated query
-func (q *query) AddReturnField(field string) *query {
+func (q *QueryOptions) AddReturnField(field string) *QueryOptions {
 	q.ReturnFields = append(q.ReturnFields, field)
 	return q
 }
 
 // WithFilters sets the filters, replacing any which might
 // be currently set, returning the updated query
-func (q *query) WithFilters(filters []*queryFilter) *query {
+func (q *QueryOptions) WithFilters(filters []*queryFilter) *QueryOptions {
 	q.Filters = filters
 	return q
 }
 
 // WithFilters sets the filters, replacing any which might
 // be currently set, returning the updated query
-func (q *query) AddFilter(filter *queryFilter) *query {
+func (q *QueryOptions) AddFilter(filter *queryFilter) *QueryOptions {
 	q.Filters = append(q.Filters, filter)
 	return q
 }
 
 // WithInKeys sets the keys to be searched, limiting the search
 // to only these keys. The updated query is returned.
-func (q *query) WithInKeys(keys []string) *query {
+func (q *QueryOptions) WithInKeys(keys []string) *QueryOptions {
 	q.InKeys = keys
 	return q
 }
 
 // AddKey adds a single key to the keys to be searched, limiting the search
 // to only these keys. The updated query is returned.
-func (q *query) AddKey(key string) *query {
+func (q *QueryOptions) AddKey(key string) *QueryOptions {
 	q.InKeys = append(q.InKeys, key)
 	return q
 }
 
 // WithInKeys sets the fields to be searched, limiting the search
 // to only these fields. The updated query is returned.
-func (q *query) WithInFields(fields []string) *query {
+func (q *QueryOptions) WithInFields(fields []string) *QueryOptions {
 	q.InFields = fields
 	return q
 }
 
 // AddField adds a single field to the fields to be searched in, limiting the search
 // to only these fields. The updated query is returned.
-func (q *query) AddField(field string) *query {
+func (q *QueryOptions) AddField(field string) *QueryOptions {
 	q.InFields = append(q.InFields, field)
 	return q
 }
 
 // WithSummarize sets the Summarize member of the query, returning the updated query.
-func (q *query) WithSummarize(s *querySummarize) *query {
+func (q *QueryOptions) WithSummarize(s *querySummarize) *QueryOptions {
 	q.Summarize = s
 	return q
 }
 
 // WithHighlight sets the Highlight member of the query, returning the updated query.
-func (q *query) WithHighlight(h *queryHighlight) *query {
+func (q *QueryOptions) WithHighlight(h *queryHighlight) *QueryOptions {
 	q.HighLight = h
 	return q
 }
 
 // serialize converts a query struct to a slice of  interface{}
 // ready for execution against Redis
-func (q *query) serialize() []interface{} {
-	var args = []interface{}{"FT.SEARCH", q.Index, q.QueryString}
+func (q *QueryOptions) serialize() []interface{} {
+	var args = []interface{}{}
 
 	if q.NoContent {
 		args = append(args, "NOCONTENT")
@@ -258,25 +210,25 @@ func (q *query) serialize() []interface{} {
 
 // resultSize uses the query to work out how many entries
 // in the query raw results slice are used per result.
-func (q *query) resultSize() int {
+func (q *QueryOptions) resultSize() int {
 	count := 2 // default to 2 - key and value
 
-	if q.WithScores {
+	if q.WithScores { // one more if returning scores
 		count += 1
 	}
 
-	if q.NoContent {
+	if q.NoContent { // one less if not content
 		count -= 1
 	}
 
-	if q.ExplainScore {
+	if q.ExplainScore { // one more if explaining
 		count += 1
 	}
 
 	return count
 }
 
-func (q *query) serializeSlop() []interface{} {
+func (q *QueryOptions) serializeSlop() []interface{} {
 	if q.Slop != noSlop {
 		return []interface{}{"SLOP", q.Slop}
 	} else {
@@ -284,7 +236,7 @@ func (q *query) serializeSlop() []interface{} {
 	}
 }
 
-func (q *query) serializeLanguage() []interface{} {
+func (q *QueryOptions) serializeLanguage() []interface{} {
 	if q.Language != "" {
 		return []interface{}{"LANGUAGE", q.Language}
 	} else {
