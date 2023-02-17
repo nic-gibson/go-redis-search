@@ -3,7 +3,7 @@ package ftsearch
 // Functions and structs used to set up summarization and highlighting.
 
 type querySummarize struct {
-	Fields    countedArgs
+	Fields    []string
 	Frags     int32
 	Len       int32
 	Separator string
@@ -64,7 +64,7 @@ func (s *querySummarize) AddField(field string) *querySummarize {
 // serialize prepares the summarisation to be passed to Redis.
 func (s *querySummarize) serialize() []interface{} {
 	args := []interface{}{"SUMMARIZE"}
-	args = append(args, s.Fields.serialize("FIELDS")...)
+	args = append(args, serializeCountedArgs("fields", false, s.Fields)...)
 	args = append(args, "FRAGS", s.Frags)
 	args = append(args, "LEN", s.Len)
 	args = append(args, "SEPARATOR", s.Separator)
@@ -73,7 +73,7 @@ func (s *querySummarize) serialize() []interface{} {
 
 // queryHighlight allows the user to define optional query highlighting
 type queryHighlight struct {
-	Fields   countedArgs
+	Fields   []string
 	OpenTag  string
 	CloseTag string
 }
@@ -105,7 +105,7 @@ func (h *queryHighlight) SetTags(open string, close string) *queryHighlight {
 // serialize prepares the highlighting to be passed to Redis.
 func (h *queryHighlight) serialize() []interface{} {
 	args := []interface{}{"HIGHLIGHT"}
-	args = append(args, h.Fields.serialize("FIELDS")...)
+	args = append(args, serializeCountedArgs("fields", false, h.Fields)...)
 	if h.OpenTag != "" || h.CloseTag != "" {
 		args = append(args, "TAGS", h.OpenTag, h.CloseTag)
 	}

@@ -7,8 +7,6 @@ import (
 	"math"
 )
 
-type countedArgs []string
-
 type QueryOptions struct {
 	Index        string
 	NoContent    bool
@@ -18,10 +16,10 @@ type QueryOptions struct {
 	InOrder      bool
 	ExplainScore bool
 	Limit        *queryLimit
-	ReturnFields countedArgs
+	ReturnFields []string
 	Filters      queryFilterList
-	InKeys       countedArgs
-	InFields     countedArgs
+	InKeys       []string
+	InFields     []string
 	Language     string
 	Slop         int32
 	Summarize    *querySummarize
@@ -177,7 +175,7 @@ func (q *QueryOptions) serialize() []interface{} {
 	}
 
 	args = append(args, q.Filters.serialize()...)
-	args = append(args, q.ReturnFields.serialize("RETURN")...)
+	args = append(args, serializeCountedArgs("RETURN", false, q.ReturnFields)...)
 
 	if q.Summarize != nil {
 		args = append(args, q.Summarize.serialize()...)
@@ -194,8 +192,8 @@ func (q *QueryOptions) serialize() []interface{} {
 	}
 
 	args = append(args, q.serializeLanguage()...)
-	args = append(args, q.InKeys.serialize("INKEYS")...)
-	args = append(args, q.InFields.serialize("INFIELDS")...)
+	args = append(args, serializeCountedArgs("INKEYS", false, q.InKeys)...)
+	args = append(args, serializeCountedArgs("INFIELDS", false, q.InFields)...)
 
 	if q.ExplainScore {
 		args = append(args, "EXPLAINSCORE")
@@ -278,20 +276,4 @@ func toMap(input []interface{}) map[string]string {
 		results[key] = value
 	}
 	return results
-}
-
-func (c countedArgs) serialize(name string) []interface{} {
-	if len(c) > 0 {
-		result := make([]interface{}, 2+len(c))
-
-		result[0] = name
-		result[1] = len(c)
-		for pos, val := range c {
-			result[pos+2] = val
-		}
-
-		return result
-	} else {
-		return nil
-	}
 }

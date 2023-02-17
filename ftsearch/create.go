@@ -1,116 +1,333 @@
-// create provides an interface to RedisSearch's create index functionality.
+// implements the functions and data structures required to implement FT.CREATE
 package ftsearch
 
-import (
-	"context"
-	"fmt"
+// SearchIndex defines an index to be created with FT.CREATE
+type IndexOptions struct {
+	On              string
+	Prefixes        []string
+	Filter          string
+	Language        string
+	LanguageField   string
+	Score           float64
+	ScoreField      string
+	MaxTextFields   bool
+	NoOffsets       bool
+	Temporary       uint64 // If this is a temporary index, number of seconds until expiry
+	NoHighlight     bool
+	NoFields        bool
+	NoFreqs         bool
+	StopWords       []string
+	UseStopWords    bool
+	SkipInitialscan bool
+	Schema          []SchemaAttribute
+}
 
-	"github.com/redis/go-redis/v9"
-)
+type TagAttribute struct {
+	Name         string
+	Alias        string
+	Sortable     bool
+	UnNormalized bool
+	Separator    string
+	CaseSenstive bool
+}
 
-type (
-	CreateOptions struct {
-		Index   string
-		On      string
-		Schemas []*SchemaOptions
+type TextAttribute struct {
+	Name         string
+	Alias        string
+	Sortable     bool
+	UnNormalized bool
+	Phonetic     string
+	Weight       float32
+	NoStem       bool
+}
+
+type NumericAttribute struct {
+	Name         string
+	Alias        string
+	Sortable     bool
+	UnNormalized bool
+}
+
+type SchemaAttribute interface {
+	serialize() []interface{}
+}
+
+/* -- FLUENT INTERFACE to index options; schema options too simple to benefit -- */
+
+// NewIndexOptions returns an initialised IndexOptions struct with defaults set
+func NewIndexOptions() *IndexOptions {
+	return &IndexOptions{
+		On:    "hash", // Default
+		Score: 1,      // Default
 	}
-	// SCHEMA {identifier} AS {attribute} {attribute type} {options...}:
-	SchemaOptions struct {
-		identifier    string
-		attribute     string
-		attributeType string
-	}
-)
+}
+
+// AddSchemaAttribute appends a schema attribute to the IndexOptions' Schema array
+func (i *IndexOptions) AddSchemaAttribute(t SchemaAttribute) *IndexOptions {
+	i.Schema = append(i.Schema, t)
+	return i
+}
+
+// WithSchema sets the IndexOptions' Schema array to the provided values overwriting
+// any existing schema.
+func (i *IndexOptions) WithSchema(s []SchemaAttribute) *IndexOptions {
+	i.Schema = s
+	return i
+}
+
+// AddPrefix appends a prefix to the IndexOptions' Prefixes array
+func (i *IndexOptions) AddPrefix(prefix string) *IndexOptions {
+	i.Prefixes = append(i.Prefixes, prefix)
+	return i
+}
+
+// WithPrefixes sets the IndexOptions' Prefix array to the provided values overwriting
+// any existing prefixes.
+func (i *IndexOptions) WithPrefixes(prefixes []string) *IndexOptions {
+	i.Prefixes = prefixes
+	return i
+}
+
+// WithFilter sets the IndexOptions' Filter field to the provided value
+func (i *IndexOptions) WithFilter(filter string) *IndexOptions {
+	i.Filter = filter
+	return i
+}
+
+// WithLanguage sets the IndexOptions' Language field to the provided value, setting
+// the default language for the index
+func (i *IndexOptions) WithLanguage(language string) *IndexOptions {
+	i.Language = language
+	return i
+}
+
+// WithLanguageField sets the IndexOptions' LanguageField field to the provided value, setting
+// the field definining language in the index
+func (i *IndexOptions) WithLanguageField(field string) *IndexOptions {
+	i.LanguageField = field
+	return i
+}
+
+// WithScore sets the IndexOptions' Score field to the provided value, setting
+// the default score for documents (this should be zero to 1.0 and is not
+// checked)
+func (i *IndexOptions) WithScore(score float64) *IndexOptions {
+	i.Score = score
+	return i
+}
+
+// WithScoreField sets the IndexOptions' ScoreField field to the provided value, setting
+// the field defining document score in the index
+func (i *IndexOptions) WithScoreField(field string) *IndexOptions {
+	i.ScoreField = field
+	return i
+}
 
 /*
-FT.CREATE echoTokenStoreIdx ON JSON SCHEMA $.metadata.type AS type TEXT $.metadata.client_id AS client_id TEXT $.metadata.subject AS subject TEXT
+
+	StopWords       []string
+	UseStopWords    bool
+	SkipInitialscan bool
+
 */
-// NewCreate creates a new create with defaults set
-// https://redis.io/commands/ft.create/
-func NewCreate() *CreateOptions {
-	return &CreateOptions{
-		On: "HASH", // since it is the default
-	}
+
+// WithMaxTextFields sets the IndexOptions' MaxTextFields field to true
+func (i *IndexOptions) WithMaxTextFields() *IndexOptions {
+	i.MaxTextFields = true
+	return i
 }
 
-// NewSchema creates a new schema with defaults set
-func NewSchema() *SchemaOptions {
-	return &SchemaOptions{}
-}
-func (s *SchemaOptions) WithIdentifier(identifier string) *SchemaOptions {
-	s.identifier = identifier
-	return s
-}
-func (s *CreateOptions) serialize() []interface{} {
-	var args = []interface{}{"FT.CREATE", s.Index, "ON", s.On}
-	// SCHEMA
-	args = append(args, "SCHEMA")
-	for _, schema := range s.Schemas {
-		schemaArgs := schema.serialize()
-		args = append(args, schemaArgs...)
-	}
-	return args
-}
-func (s *SchemaOptions) serialize() []interface{} {
-	var args = []interface{}{s.identifier}
-
-	if s.attribute != "" {
-		args = append(args, "AS")
-		args = append(args, s.attribute)
-	}
-	if s.attributeType != "" {
-		args = append(args, s.attributeType)
-	}
-	return args
-}
-func (s *SchemaOptions) AsAttribute(attribute string) *SchemaOptions {
-	s.attribute = attribute
-	return s
-}
-func (s *SchemaOptions) AttributeType(attributeType string) *SchemaOptions {
-	s.attributeType = attributeType
-	return s
-}
-func (q *CreateOptions) WithSchema(s *SchemaOptions) *CreateOptions {
-	q.Schemas = append(q.Schemas, s)
-	return q
+// WithNoOffsets sets the IndexOptions' NoOffsets field to true
+func (i *IndexOptions) WithNoOffsets() *IndexOptions {
+	i.NoOffsets = true
+	return i
 }
 
-// WithIndex sets the index to be search on a create, returning the
-// udpated create for chaining
-func (q *CreateOptions) WithIndex(index string) *CreateOptions {
-	q.Index = index
-	return q
+// AsTempoary sets the Temporary  field to the given number of seconds.
+func (i *IndexOptions) AsTemporary(secs uint64) *IndexOptions {
+	i.Temporary = secs
+	return i
 }
 
-func (q *CreateOptions) OnJSON() *CreateOptions {
-	q.On = "JSON"
-	return q
-}
-func (q *CreateOptions) OnHASH() *CreateOptions {
-	q.On = "HASH"
-	return q
-}
-func (q *CreateOptions) String() string {
-	return fmt.Sprintf("%v", q.serialize())
+// WithNoHighlight sets the IndexOptions' NoHighlight field to true
+func (i *IndexOptions) WithNoHighlight() *IndexOptions {
+	i.NoOffsets = true
+	return i
 }
 
-type (
-	CreateIndexResults struct {
-		RawResults interface{}
+// WithNoHighlight sets the IndexOptions' NoFields field to true
+func (i *IndexOptions) WithNoFields() *IndexOptions {
+	i.NoFields = true
+	return i
+}
+
+// WithNoHighlight sets the IndexOptions' NoFreqs field to true.
+func (i *IndexOptions) WithNoFreqs() *IndexOptions {
+	i.NoFreqs = true
+	return i
+}
+
+// SkipInitialscan sets the IndexOptions' SkipInitialscan field to true.
+func (i *IndexOptions) WithSkipInitialscan() *IndexOptions {
+	i.SkipInitialscan = true
+	return i
+}
+
+// AddStopWord appends a new stopword to the IndexOptions' stopwords array
+// and sets UseStopWords to true
+func (i *IndexOptions) AddStopWord(word string) *IndexOptions {
+	i.StopWords = append(i.StopWords, word)
+	i.UseStopWords = true
+	return i
+}
+
+// WithStopWords sets the IndexOptions' StopWords array to a new value
+// and sets UseStopWords to true if the array has any entries
+func (i *IndexOptions) WithStopWords(words []string) *IndexOptions {
+	i.StopWords = words
+	i.UseStopWords = len(words) > 0
+	return i
+}
+
+// WithNoStopWords sets IndexOptions' StopWords array to empty and
+// sets UseStopWords to true to ensure the index uses no stopwords at all
+func (i *IndexOptions) WithNoStopWords() *IndexOptions {
+	i.UseStopWords = true
+	i.StopWords = []string{}
+	return i
+}
+
+/* ---- SERIALIZATION METHODS */
+
+func (i *IndexOptions) serialize() []interface{} {
+
+	args := []interface{}{"on", i.On}
+	args = append(args, serializeCountedArgs("prefix", false, i.Prefixes)...)
+
+	if i.Filter != "" {
+		args = append(args, "filter", i.Filter)
 	}
-)
 
-func (c *Client) CreateIndex(ctx context.Context, qry *Create) (*CreateIndexResults, error) {
-	serialized := qry.serialize()
-	cmd := redis.NewCmd(ctx, serialized...)
-	if err := c.client.Process(ctx, cmd); err != nil {
-		return nil, err
-	} else if rawResults, err := cmd.Result(); err != nil {
-		return nil, err
-	} else {
-		return &CreateIndexResults{
-			RawResults: rawResults,
-		}, nil
+	if i.Language != "" {
+		args = append(args, "language", i.Language)
 	}
+
+	if i.LanguageField != "" {
+		args = append(args, "language_field", i.LanguageField)
+	}
+
+	args = append(args, "score", i.Score)
+
+	if i.ScoreField != "" {
+		args = append(args, "score_field", i.ScoreField)
+	}
+
+	if i.MaxTextFields {
+		args = append(args, "maxtextfields")
+	}
+
+	if i.NoOffsets {
+		args = append(args, "nooffsets")
+	}
+
+	if i.Temporary > 0 {
+		args = append(args, "temporary", i.Temporary)
+	}
+
+	if i.NoHighlight && !i.NoOffsets {
+		args = append(args, "nohl")
+	}
+
+	if i.NoFields {
+		args = append(args, "nofields")
+	}
+
+	if i.NoFreqs {
+		args = append(args, "nofreqs")
+	}
+
+	if i.UseStopWords {
+		args = append(args, serializeCountedArgs("stopwords", true, i.StopWords)...)
+	}
+
+	if i.SkipInitialscan {
+		args = append(args, "skipinitialscan")
+	}
+
+	schema := []interface{}{"schema"}
+
+	for _, attrib := range i.Schema {
+		schema = append(schema, attrib.serialize()...)
+	}
+
+	return append(args, schema...)
+}
+
+func (a NumericAttribute) serialize() []interface{} {
+
+	attribs := []interface{}{a.Name}
+	if a.Alias != "" {
+		attribs = append(attribs, "as", a.Alias)
+	}
+	attribs = append(attribs, "numeric")
+
+	if a.Sortable {
+		attribs = append(attribs, "sortable")
+		if a.UnNormalized {
+			attribs = append(attribs, "sortable", "unf")
+		}
+	}
+
+	return attribs
+}
+
+func (a TagAttribute) serialize() []interface{} {
+
+	attribs := []interface{}{a.Name}
+	if a.Alias != "" {
+		attribs = append(attribs, "as", a.Alias)
+	}
+	attribs = append(attribs, "tag")
+	if a.Sortable {
+		attribs = append(attribs, "sortable")
+		if a.UnNormalized {
+			attribs = append(attribs, "unf")
+		}
+	}
+	if a.Separator != "" {
+		attribs = append(attribs, "separator", a.Separator)
+	}
+	if a.CaseSenstive {
+		attribs = append(attribs, "casesensitive")
+	}
+
+	return attribs
+}
+
+func (a TextAttribute) serialize() []interface{} {
+
+	attribs := []interface{}{a.Name}
+	if a.Alias != "" {
+		attribs = append(attribs, "as", a.Alias)
+	}
+
+	attribs = append(attribs, "text")
+
+	if a.Sortable {
+		attribs = append(attribs, "sortable")
+		if a.UnNormalized {
+			attribs = append(attribs, "unf")
+		}
+	}
+	if a.Phonetic != "" {
+		attribs = append(attribs, "phonetic", a.Phonetic)
+	}
+	if a.NoStem {
+		attribs = append(attribs, "nostem")
+	}
+	if a.Weight != 0 {
+		attribs = append(attribs, "weight", a.Weight)
+	}
+
+	return attribs
 }
